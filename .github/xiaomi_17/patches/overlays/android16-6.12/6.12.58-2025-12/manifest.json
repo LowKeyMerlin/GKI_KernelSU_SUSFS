@@ -1,0 +1,9 @@
+{
+  "baseline": "baseline/android16-6.12/susfs-9c9f19d8.patch",
+  "susfs_commit": "9c9f19d8395693327c78df36569b44e94c187b8a",
+  "files": {
+    "fs/proc/task_mmu.c": "24af15d218614b870190123e29231e720012ad9f6642582b84e96b65ce965841",
+    "security/selinux/hooks.c": "26d86783474f763e2a6ae56acc4df612e9a5260909d719ed9f5f887c2ef8d2ff"
+  },
+  "composed_sha256": "1a659ae53aa444248a81d231b3d27944cd9687b1670a15ed4e0123664c386e33"
+}
