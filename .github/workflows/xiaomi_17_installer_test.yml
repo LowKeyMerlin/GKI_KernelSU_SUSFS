@@ -1,0 +1,253 @@
+name: Test Installer (xiaomi_17)
+run-name: "Test Installer: ${{ inputs.title || (github.event_name == 'workflow_run' && format('build #{0}', github.event.workflow_run.run_number)) || 'manual' }}"
+
+# Flash the AnyKernel3 zips of a build into a boot image file, in two guests:
+#
+#   qemu        Google's newest GKI release of the same KMI in QEMU, with the zip's own busybox
+#               and magiskboot as the only userspace.
+#   cuttlefish  Cuttlefish, the newest AOSP release build, where the installer runs under
+#               Android's shell as it does when flashed from a booted device.
+#
+# The zip is the artifact of the build. Only the flash target is changed in a copy of it, the
+# upstream scripts and the front end run as built. See .github/xiaomi_17/installer_test.
+on:
+  workflow_run:
+    workflows: ["Build Kernels (xiaomi_17)"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      title:
+        description: Name for this run in the workflow list
+        required: false
+      run:
+        description: Build run to test, the latest successful one when empty
+        required: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.id || github.run_id }}
+
+jobs:
+  plan:
+    # Only builds of this repository, the zip is executed in the guests.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      run: ${{ steps.pick.outputs.run }}
+      zips: ${{ steps.pick.outputs.zips }}
+      newest: ${{ steps.pick.outputs.newest }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Pick the build and its zips
+        id: pick
+        env:
+          TRIGGER_RUN: ${{ github.event.workflow_run.id }}
+          INPUT_RUN: ${{ inputs.run }}
+        run: |
+          set -euo pipefail
+          run="${TRIGGER_RUN:-$INPUT_RUN}"
+          [ -n "$run" ] || run="$(gh run list --workflow xiaomi_17.yml --status success --limit 1 \
+            --json databaseId --jq '.[0].databaseId // empty')"
+          [ -n "$run" ] || { echo "::error::there is no successful build to test"; exit 1; }
+          names="$(gh api "repos/$GH_REPO/actions/runs/$run/artifacts" --paginate \
+            --jq '.artifacts[] | select(.expired | not) | .name' | grep -- '-AnyKernel3$' | sort -V)"
+          [ -n "$names" ] || { echo "::error::build $run has no AnyKernel3 artifact"; exit 1; }
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "zips=$(jq -Rnc '[inputs]' <<< "$names")" >> "$GITHUB_OUTPUT"
+          echo "newest=$(tail -n 1 <<< "$names")" >> "$GITHUB_OUTPUT"
+          echo "build $run" >> "$GITHUB_STEP_SUMMARY"
+
+  qemu:
+    name: qemu (${{ matrix.zip }})
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        zip: ${{ fromJSON(needs.plan.outputs.zips) }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN: ${{ needs.plan.outputs.run }}
+      ZIP: ${{ matrix.zip }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install QEMU
+        run: |
+          set -euo pipefail
+          t=.github/xiaomi_17/installer_test
+          bash $t/retry.sh sudo apt-get update -q
+          bash $t/retry.sh sudo apt-get install -y -qq --no-install-recommends qemu-system-arm cpio
+
+      - name: Fetch the zip, the kernel and busybox
+        run: |
+          set -euo pipefail
+          t=.github/xiaomi_17/installer_test
+          bash $t/retry.sh gh run download "$RUN" -n "$ZIP" -D "$RUNNER_TEMP/ak"
+          kmi="$(sed -E 's/^([0-9]+\.[0-9]+)\.[0-9]+-(android[0-9]+)-.*/\2-\1/' <<< "$ZIP")"
+          echo "KMI=$kmi" >> "$GITHUB_ENV"
+          bash $t/retry.sh python3 $t/gki_latest.py "$kmi" > "$RUNNER_TEMP/gki.json"
+          jq -r '.[0] | "Kernel: Google release `\(.tag)`"' "$RUNNER_TEMP/gki.json" >> "$GITHUB_STEP_SUMMARY"
+          curl -fsSL --connect-timeout 10 --max-time 300 --retry 3 --retry-delay 10 --retry-all-errors \
+            -o "$RUNNER_TEMP/Image" "$(jq -r '.[0].image' "$RUNNER_TEMP/gki.json")"
+          bash $t/busybox.sh "$RUNNER_TEMP/busybox"
+
+      - name: Boot and judge
+        run: |
+          set -euo pipefail
+          t=.github/xiaomi_17/installer_test
+          out="$RUNNER_TEMP/out"
+          bash $t/prep.sh "$RUNNER_TEMP/ak" "$RUNNER_TEMP/prep"
+          bash $t/qemu_boot.sh "$RUNNER_TEMP/Image" "$RUNNER_TEMP/prep" "$out" "$RUNNER_TEMP/busybox"
+          rc=0
+          python3 $t/judge.py "$out/console.log" > "$out/report.md" || rc=$?
+          cat "$out/report.md" >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+
+      - name: Keep the console
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: qemu-${{ matrix.zip }}
+          path: ${{ runner.temp }}/out
+          retention-days: 14
+          if-no-files-found: warn
+
+  cuttlefish:
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN: ${{ needs.plan.outputs.run }}
+      ZIP: ${{ needs.plan.outputs.newest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install the Cuttlefish host tools
+        run: |
+          sudo mkdir -p /usr/share/keyrings
+          curl -fsSL https://us-apt.pkg.dev/doc/repo-signing-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/android-cuttlefish.gpg
+          echo "deb [signed-by=/usr/share/keyrings/android-cuttlefish.gpg] https://us-apt.pkg.dev/projects/android-cuttlefish-artifacts android-cuttlefish main" | sudo tee /etc/apt/sources.list.d/android-cuttlefish.list
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cuttlefish-base libpulse0 > /dev/null
+          sudo modprobe vhost_vsock || true
+          sudo modprobe vhost_net || true
+          sudo usermod -aG kvm,cvdnetwork,render "$USER"
+          sudo chmod 666 /dev/kvm
+
+      - name: Fetch the Android build
+        run: |
+          mkdir -p "$RUNNER_TEMP/cf" && cd "$RUNNER_TEMP/cf"
+          build=aosp-android-latest-release
+          cvd fetch --default_build=$build/aosp_cf_arm64_only_phone-userdebug \
+            --host_package_build=$build/aosp_cf_x86_64_only_phone-userdebug 2>&1 | tail -n 3
+          echo "CF=$PWD" >> "$GITHUB_ENV"
+          chmod -R a+rX "$PWD"
+
+      - name: Fetch and prepare the zip
+        run: |
+          set -euo pipefail
+          t=.github/xiaomi_17/installer_test
+          bash $t/retry.sh gh run download "$RUN" -n "$ZIP" -D "$RUNNER_TEMP/ak"
+          bash $t/prep.sh "$RUNNER_TEMP/ak" "$RUNNER_TEMP/prep"
+
+      - name: Boot
+        run: |
+          source .github/xiaomi_17/installer_test/cf.sh
+          t0=$(date +%s)
+          start_device /tmp/create.out
+          wait_boot "$t0" 2400 || { tail -n 20 /tmp/create.out; exit 1; }
+
+      - name: Run the installer from the booted system and judge
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          source .github/xiaomi_17/installer_test/cf.sh
+          "$ADB" -s "$SERIAL" root
+          sleep 3
+          "$ADB" connect "$SERIAL" > /dev/null 2>&1 || true
+          "$ADB" -s "$SERIAL" shell 'rm -rf /data/local/tmp/xt; mkdir -p /data/local/tmp/xt'
+          push_prep /data/local/tmp/xt
+          run_guest /data/local/tmp/xt '' /tmp/guest.out || echo '::error::the installer test did not finish on the guest'
+          rc=0
+          python3 .github/xiaomi_17/installer_test/judge.py /tmp/guest.out > /tmp/report.md || rc=$?
+          cat /tmp/report.md >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+
+      # A zip is usually flashed from a recovery: no zygote, /tmp as the work directory and
+      # no app storage. Reboot into the recovery and run the installer there as well.
+      - name: Reboot into the recovery
+        run: |
+          source .github/xiaomi_17/installer_test/cf.sh
+          "$ADB" -s "$SERIAL" reboot recovery
+          sleep 20
+          t0=$(date +%s)
+          while [ $(($(date +%s) - t0)) -lt 900 ]; do
+            "$ADB" connect "$SERIAL" > /dev/null 2>&1 || true
+            [ "$("$ADB" -s "$SERIAL" get-state 2> /dev/null | tr -d '\r')" = recovery ] && exit 0
+            sleep 5
+          done
+          echo "::error::the guest did not reach the recovery"
+          "$ADB" devices -l || true
+          exit 1
+
+      - name: Run the installer from the recovery and judge
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          source .github/xiaomi_17/installer_test/cf.sh
+          "$ADB" -s "$SERIAL" root || true
+          sleep 3
+          "$ADB" connect "$SERIAL" > /dev/null 2>&1 || true
+          "$ADB" -s "$SERIAL" shell 'rm -rf /tmp/xt; mkdir -p /tmp/xt'
+          push_prep /tmp/xt
+          run_guest /tmp/xt recovery /tmp/guest-recovery.out || echo '::error::the installer test did not finish on the guest'
+          rc=0
+          python3 .github/xiaomi_17/installer_test/judge.py /tmp/guest-recovery.out > /tmp/report-recovery.md || rc=$?
+          cat /tmp/report-recovery.md >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+      - name: Collect the guest logs
+        if: always()
+        run: |
+          source .github/xiaomi_17/installer_test/cf.sh
+          "$ADB" -s "$SERIAL" shell dmesg 2>/dev/null | tail -n 500 > /tmp/guest-dmesg.txt || true
+          "$ADB" -s "$SERIAL" logcat -d -b all 2>/dev/null | tail -n 1000 > /tmp/guest-logcat.txt || true
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: cuttlefish-logs
+          path: |
+            /tmp/guest.out
+            /tmp/report.md
+            /tmp/guest-recovery.out
+            /tmp/report-recovery.md
+            /tmp/guest-dmesg.txt
+            /tmp/guest-logcat.txt
+            /tmp/create.out
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Stop the device
+        if: always()
+        run: |
+          source .github/xiaomi_17/installer_test/cf.sh
+          stop_device
