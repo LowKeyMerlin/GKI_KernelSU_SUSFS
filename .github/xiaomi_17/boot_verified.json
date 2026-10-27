@@ -1,0 +1,39 @@
+{
+  "_comment": "Pin sets that booted on the device. Add entries by hand after a boot test.",
+  "device": "Xiaomi 17 (nezha, 25128PNA1C)",
+  "verified": [
+    {
+      "kernel": "6.12.23-android16-2025-06",
+      "root_flavor": "bakasu",
+      "root_commit": "9097b1a1c6c889756201bbc5713a84a9b23f7908",
+      "susfs_commit": "5e0b2b925865000ca7dce993ecf1d281ee312887",
+      "build_run": 40163814464,
+      "options": "use_net=on (no CIFS), BBR",
+      "verified_on": "2026-10-25",
+      "result": "boots; root, SUSFS v2.3.0, selinux_hide ok; netfs.ko+tipc load; LTE data validated; bbr active",
+      "manager": {
+        "picked_by": "pick_manager.py (equal to kernel commit)",
+        "commit": "9097b1a1c6c889756201bbc5713a84a9b23f7908",
+        "verified": true,
+        "note": "equal to kernel commit (kernel driver 35224); shows kernel installed. 35215 (older) also works; 35252 (28 builds newer, 39faf94a) shows 'Kernel update required'.",
+        "build": 35224,
+        "verified_on": "2026-10-25"
+      }
+    },
+    {
+      "kernel": "6.12.23-android16-2025-06",
+      "root_flavor": "bakasu",
+      "root_commit": "9097b1a1c6c889756201bbc5713a84a9b23f7908",
+      "susfs_commit": "5e0b2b925865000ca7dce993ecf1d281ee312887",
+      "build_run": 40163790618,
+      "options": "use_net=off",
+      "verified_on": "2026-10-25",
+      "result": "boots; mobile data works; cubic",
+      "manager": {
+        "build": 35215,
+        "verified": true,
+        "note": "older than the kernel, worked"
+      }
+    }
+  ]
+}

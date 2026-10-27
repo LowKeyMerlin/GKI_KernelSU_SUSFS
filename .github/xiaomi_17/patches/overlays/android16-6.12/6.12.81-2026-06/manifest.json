@@ -1,0 +1,8 @@
+{
+  "baseline": "baseline/android16-6.12/susfs-9c9f19d8.patch",
+  "susfs_commit": "9c9f19d8395693327c78df36569b44e94c187b8a",
+  "files": {
+    "fs/proc/task_mmu.c": "24af15d218614b870190123e29231e720012ad9f6642582b84e96b65ce965841"
+  },
+  "composed_sha256": "124374e2be1c8e993351b8e7e1e752048ed38fd5e04e9fe7e52b63919e5e1913"
+}
