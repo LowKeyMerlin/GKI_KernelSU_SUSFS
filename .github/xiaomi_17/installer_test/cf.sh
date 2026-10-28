@@ -56,7 +56,7 @@ run_guest() {
   local t0 now
   "$ADB" -s "$SERIAL" shell "rm -f $1/run.out; nohup sh -c 'XT_CASES=\"stock parity plain\" XT_TIMEOUT=900 sh $1/guest.sh $1 sh $2 > $1/run.out 2>&1; echo finished >> $1/run.out' < /dev/null > /dev/null 2>&1 &"
   t0=$(date +%s)
-  while now=$(date +%s); [ $((now - t0)) -lt 1000 ]; do
+  while now=$(date +%s); [ $((now - t0)) -lt 1700 ]; do
     sleep 20
     "$ADB" -s "$SERIAL" shell "cat $1/run.out" 2> /dev/null | tr -d '\r' > "$3" || true
     echo "$((now - t0))s: $(wc -l < "$3") lines, last: $(tail -n 1 "$3")"

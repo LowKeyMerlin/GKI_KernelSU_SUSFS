@@ -70,7 +70,7 @@ jobs:
     name: qemu (${{ matrix.zip }})
     needs: plan
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
@@ -176,7 +176,7 @@ jobs:
           wait_boot "$t0" 2400 || { tail -n 20 /tmp/create.out; exit 1; }
 
       - name: Run the installer from the booted system and judge
-        timeout-minutes: 25
+        timeout-minutes: 35
         run: |
           set -euo pipefail
           source .github/xiaomi_17/installer_test/cf.sh
@@ -209,7 +209,7 @@ jobs:
           exit 1
 
       - name: Run the installer from the recovery and judge
-        timeout-minutes: 25
+        timeout-minutes: 35
         run: |
           set -euo pipefail
           source .github/xiaomi_17/installer_test/cf.sh

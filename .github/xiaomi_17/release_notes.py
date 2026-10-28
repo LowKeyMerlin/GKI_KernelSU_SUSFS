@@ -153,9 +153,7 @@ def main():
         components.append(("NoMount", link(nomount, NOMOUNT_URL)))
 
     verified = tested_rows(picks)
-    out = ["# GKI KernelSU SUSFS", "",
-           f"{', '.join(variants)} with {', '.join(LABELS[f] for f in roots) or 'no root'} and SUSFS.", "",
-           "## Tested", ""]
+    out = ["# GKI KernelSU SUSFS", "", "## Tested", ""]
     if verified:
         out += ["| Device | Kernel | Result |", "| ------ | ------ | ------ |"]
         for e in verified:
@@ -173,7 +171,7 @@ def main():
             "Back up your stock `boot` image first. To recover, run `fastboot flash boot boot.img`.", "",
             "## Which file do I need", "",
             "- **`*-AnyKernel3.zip`:** the kernel. Choose the one for your kernel sublevel.",
-            "- **`*Manager*.apk`:** the root manager. A spoofed build uses a different package name.",
+            "- **`*.apk`:** the root manager. A spoofed build uses a different package name.",
             "- **`NoMount-Metamodule.zip`:** optional. Install it from the manager.", "",
             "## Components", "", "| Component | Commit |", "| --------- | ------ |"]
     out += [f"| {name} | {ref} |" for name, ref in components]

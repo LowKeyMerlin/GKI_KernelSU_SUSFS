@@ -1,6 +1,6 @@
 {
   "_comment": "Pin sets that booted on the device. Add entries by hand after a boot test.",
-  "device": "Xiaomi 17 (nezha, 25128PNA1C)",
+  "device": "Xiaomi 17 Ultra (nezha)",
   "verified": [
     {
       "kernel": "6.12.23-android16-2025-06",
@@ -10,7 +10,7 @@
       "build_run": 40163814464,
       "options": "use_net=on (no CIFS), BBR",
       "verified_on": "2026-10-25",
-      "result": "boots; root, SUSFS v2.3.0, selinux_hide ok; netfs.ko+tipc load; LTE data validated; bbr active",
+      "result": "boots; root, SUSFS v2.3.0, selinux_hide ok; netfs.ko+tipc load; mobile data validated; bbr active",
       "manager": {
         "picked_by": "pick_manager.py (equal to kernel commit)",
         "commit": "9097b1a1c6c889756201bbc5713a84a9b23f7908",

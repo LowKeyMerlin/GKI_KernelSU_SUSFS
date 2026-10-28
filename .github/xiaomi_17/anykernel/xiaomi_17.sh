@@ -390,7 +390,7 @@ xi_begin() {
   if [ -z "$xi_device" ]; then
     xi_warn "device name not readable"
   elif [ "$xi_device" != nezha ]; then
-    xi_warn "built and tested on the Xiaomi 17 (nezha), this is $xi_device"
+    xi_warn "built and tested on the Xiaomi 17 Ultra (nezha), this is $xi_device"
   fi
 
   xi_step 2 "Kernel check"

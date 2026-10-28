@@ -23,7 +23,7 @@ with fixes found on the Xiaomi 17.
 - **Guided installer.** It copies the release and build date from the device, so both slots report one kernel version.
 
 > [!NOTE]
-> The kernels are not device specific. The fixes here were verified on the Xiaomi 17 (`nezha`, Android 16, kernel 6.12). The installer warns on a device it has not seen and does not stop the flash.
+> The kernels are not device specific. The fixes here were verified on the Xiaomi 17 Ultra (`nezha`, Android 16, kernel 6.12). The installer warns on a device it has not seen and does not stop the flash.
 
 ## Install
 

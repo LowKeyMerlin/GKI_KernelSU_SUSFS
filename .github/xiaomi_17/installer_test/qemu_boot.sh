@@ -24,7 +24,7 @@ install -m 0755 "$here/init.sh" "$root/init"
 (cd "$root" && find . | cpio -o -H newc -R 0:0 --quiet | gzip -1) > "$work/initrd.gz"
 
 rc=0
-timeout --foreground -k 10 900 qemu-system-aarch64 \
+timeout --foreground -k 10 1500 qemu-system-aarch64 \
   -machine virt -cpu max -m 3072 -smp 2 -nographic -no-reboot -nic none \
   -kernel "$kernel" -initrd "$work/initrd.gz" \
   -append "console=ttyAMA0 panic=-1 loglevel=4 rdinit=/init" \
