@@ -22,6 +22,7 @@ PAIRS = [
     (GH / "actions/xiaomi_17-susfs/action.yml", GH / "actions/susfs/action.yml", "susfs-action.yml"),
     (GH / "actions/xiaomi_17-susfs-patches/action.yml", GH / "actions/susfs-patches/action.yml", "susfs-patches-action.yml"),
     (GH / "actions/xiaomi_17-networking/action.yml", GH / "actions/networking/action.yml", "networking-action.yml"),
+    (GH / "actions/xiaomi_17-list-manager-apks/action.yml", GH / "actions/list-manager-apks/action.yml", "list-manager-apks-action.yml"),
 ]
 
 
