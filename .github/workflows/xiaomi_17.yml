@@ -301,9 +301,9 @@ jobs:
             [susfs_commit_android16_6_12]="519c86c5d8ad3832ff4a2e1a81dc1b81076f1693"
           )
 
-          # xiaomi_17 pins: boot-tested, newer BakaSU hangs at boot
-          PIN_BAKASU="9097b1a1c6c889756201bbc5713a84a9b23f7908"
-          PIN_SUSFS_BAKASU[susfs_commit_android16_6_12]="5e0b2b925865000ca7dce993ecf1d281ee312887"
+          # xiaomi_17 pins: boot-tested on the device (boot_verified.json)
+          PIN_BAKASU="d5e9e025b8b49155f8014684d64c91742b465f65"
+          PIN_SUSFS_BAKASU[susfs_commit_android16_6_12]="519c86c5d8ad3832ff4a2e1a81dc1b81076f1693"
 
           pick() { # pinned repo ref  -> pinned when verified, else latest
             local pinned="$1" repo="$2" ref="$3"

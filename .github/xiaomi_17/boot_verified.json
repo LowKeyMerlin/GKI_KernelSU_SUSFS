@@ -5,6 +5,23 @@
     {
       "kernel": "6.12.23-android16-2025-06",
       "root_flavor": "bakasu",
+      "root_commit": "d5e9e025b8b49155f8014684d64c91742b465f65",
+      "susfs_commit": "519c86c5d8ad3832ff4a2e1a81dc1b81076f1693",
+      "build_run": 40805719308,
+      "verified_on": "2026-10-29",
+      "result": "boots and works",
+      "manager": {
+        "picked_by": "pick_manager.py (equal to kernel commit)",
+        "commit": "d5e9e025b8b49155f8014684d64c91742b465f65",
+        "verified": true,
+        "note": "kernel driver 35252 equals manager 35252",
+        "build": 35252,
+        "verified_on": "2026-10-29"
+      }
+    },
+    {
+      "kernel": "6.12.23-android16-2025-06",
+      "root_flavor": "bakasu",
       "root_commit": "9097b1a1c6c889756201bbc5713a84a9b23f7908",
       "susfs_commit": "5e0b2b925865000ca7dce993ecf1d281ee312887",
       "build_run": 40163814464,
