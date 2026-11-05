@@ -943,7 +943,10 @@ jobs:
       fail-fast: false
       matrix:
         root: ${{ fromJson(needs.resolve-sources.outputs.root_matrix) }}
-    uses: ./.github/workflows/prepare.yml
+    permissions:
+      contents: write
+      actions: write
+    uses: ./.github/workflows/xiaomi_17_prepare.yml
     with:
       config_file: .github/config/android17-6.18.json
       feature_set: ${{ needs.resolve-sources.outputs.feature_set }}
@@ -962,7 +965,7 @@ jobs:
       ksu_branch: ${{ needs.resolve-sources.outputs.kernelsu_commit }}
       anykernel3_commit: ${{ needs.resolve-sources.outputs.anykernel3_commit }}
       droidspaces_commit: ${{ needs.resolve-sources.outputs.droidspaces_commit }}
-      brand_name: ${{ inputs.brand_name || 'Wild' }}
+      brand_name: ${{ inputs.brand_name }}
       keep_kmi: ${{ inputs.keep_kmi || false }}
       os_patch_level: ${{ inputs.os_patch_level || 'All' }}
       allow_version_mismatch: ${{ inputs.allow_version_mismatch || false }}
