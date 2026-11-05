@@ -3,7 +3,8 @@
 
 An overlay replaces the upstream per-file diff on kernels where its hooks do not apply.
 It records the sha256 of the upstream diff it was adapted from, and apply fails if that
-diff has changed.
+diff has changed.  A manifest "alt" entry registers a further upstream revision of one file
+with its own overlay, so two SUSFS pins can be supported side by side.
 
 apply        rewrite the patch in place (exit 0 applied, 2 no overlay, 1 error)
 verify-tree  structure checks on the patched tree
@@ -54,19 +55,26 @@ def compose(upstream_text, odir):
     manifest = json.loads((odir / "manifest.json").read_text(encoding="utf-8"))
     pre, blocks = split_patch(upstream_text)
     by_file = {f: i for i, (f, _) in enumerate(blocks)}
+    alts = manifest.get("alt", {})
     for fname, expected in manifest["files"].items():
         if fname not in by_file:
             sys.exit(
                 f"overlay guard: upstream SUSFS patch no longer touches {fname}; review {odir.name}"
             )
         current = sha(blocks[by_file[fname]][1])
-        if current != expected:
+        # (upstream sha, overlay file): the default first, then one per extra SUSFS
+        # revision whose hooks for this file differ.
+        known = [(expected, overlay_name(fname))] + [
+            (a["upstream_sha256"], a["overlay"]) for a in alts.get(fname, [])
+        ]
+        match = next((o for s, o in known if s == current), None)
+        if match is None:
             sys.exit(
                 f"overlay guard: upstream SUSFS hooks for {fname} changed (sha256 {current[:12]} != "
-                f"validated {expected[:12]}).\nReview and regenerate the overlay in {odir} "
+                f"validated {', '.join(s[:12] for s, _ in known)}).\nReview and regenerate the overlay in {odir} "
                 f"before using this SUSFS pin on this kernel."
             )
-        blocks[by_file[fname]] = (fname, read_lf(odir / overlay_name(fname)))
+        blocks[by_file[fname]] = (fname, read_lf(odir / match))
     return pre + "".join(b for _, b in blocks), manifest
 
 

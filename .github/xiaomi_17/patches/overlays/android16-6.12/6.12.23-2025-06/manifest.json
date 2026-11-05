@@ -7,5 +7,14 @@
     "fs/proc/task_mmu.c": "24af15d218614b870190123e29231e720012ad9f6642582b84e96b65ce965841",
     "security/selinux/hooks.c": "26d86783474f763e2a6ae56acc4df612e9a5260909d719ed9f5f887c2ef8d2ff"
   },
-  "composed_sha256": "085999fe3f89e3fdff893933b8bed198bb83d5072c59e4327083085febe48dab"
+  "composed_sha256": "085999fe3f89e3fdff893933b8bed198bb83d5072c59e4327083085febe48dab",
+  "alt": {
+    "security/selinux/hooks.c": [
+      {
+        "susfs_commit": "68f62fae75ada3959f816841a3c64299383521ed",
+        "upstream_sha256": "388ea8c70a264280df4b4e48a393e6aa7a80aa5de5b728c294846c96803b5deb",
+        "overlay": "security__selinux__hooks.c.68f62fae.patch"
+      }
+    ]
+  }
 }
