@@ -35,9 +35,18 @@ runs:
       #   fs/susfs.c:183:21: error: unused function 'susfs_switch_to_ksu_domain'
       #   fs/susfs.c:217:13: error: unused function 'susfs_restore_creds'
       # Wrap them in the same switch. No-op where the symbol exists.
+      #
+      # xiaomi_17: older SUSFS pins (e.g. 519c86c5) compile the callers
+      # unconditionally and never mention the switch, so wrapping only the
+      # definitions leaves the callers without them ("call to undeclared
+      # function"). Guard only when the source carries the switch.
       shell: bash
       working-directory: ${{ github.workspace }}/kernel/common
       run: |
+        if ! grep -q 'CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER' fs/susfs.c; then
+          echo "fs/susfs.c has no priority-uid-filter switch - callers are unconditional, leaving helpers as is"
+          exit 0
+        fi
         python3 "${{ github.workspace }}/.github/scripts/susfs_guard_priority_helpers.py" fs/susfs.c
 
     # Pre-i_user_ns() kernels (5.10 / 5.15, and old 6.1) pass the mount namespace
