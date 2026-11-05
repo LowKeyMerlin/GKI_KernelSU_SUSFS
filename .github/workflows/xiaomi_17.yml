@@ -656,6 +656,16 @@ jobs:
             gh api -X DELETE "repos/${{ github.repository }}/actions/artifacts/${id}"
           done
 
+  # xiaomi_17: upstream stopped publishing BakaSU's spoofed manager, so build
+  # one from the same commit (skips itself when the SPOOF_* secrets are unset).
+  build-spoofed-manager:
+    needs: resolve-sources
+    if: "github.event_name == 'workflow_dispatch' && !inputs.test_release_notes && needs.resolve-sources.outputs.manager_list != ''"
+    uses: ./.github/workflows/xiaomi_17_spoofed_manager.yml
+    with:
+      manager_list: ${{ needs.resolve-sources.outputs.manager_list }}
+    secrets: inherit
+
   build-nomount-module:
     needs: resolve-sources
     # Scheduled (nightly) runs carry NO inputs at all - inputs.use_nomount is
@@ -1451,6 +1461,7 @@ jobs:
       - build-android17-6-18
       - build-nomount-module
       - publish-manager-artifacts
+      - build-spoofed-manager
       - notes-preview
 
     env:

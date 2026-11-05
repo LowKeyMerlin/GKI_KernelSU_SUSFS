@@ -316,11 +316,37 @@ jobs:
         # EXPECTED_SIZE_BAKASU / EXPECTED_HASH_BAKASU (0x377 / d3469712…), which
         # is the key their main-branch manager APK is signed with (checked
         # against run 41207077584), so the manager we ship stays trusted.
+        # The next step may add one row for our spoofed manager.
         if: inputs.root_flavor == 'bakasu'
         uses: ./.github/actions/set-kernel-config
         with:
           config_list: |
             CONFIG_KSU_MULTI_MANAGER_SUPPORT=n
+
+      - name: Trust the spoofed-manager signing key (BakaSU)
+        # BakaSU no longer publishes a spoofed manager, so xiaomi_17 builds its
+        # own (xiaomi_17_spoofed_manager.yml) and signs it with the SPOOF_*
+        # secrets. The kernel accepts a manager by certificate size + sha256
+        # only, so that one key is added next to BakaSU's. Multi-manager stays
+        # off: it would also trust the tiann and KOWX712 keys.
+        # Without SPOOF_KEYSTORE nothing changes; the stock manager still works.
+        if: inputs.root_flavor == 'bakasu'
+        shell: bash
+        working-directory: ${{ github.workspace }}/kernel/BakaSU/kernel
+        env:
+          SPOOF_KEYSTORE: ${{ secrets.SPOOF_KEYSTORE }}
+          SPOOF_KEYSTORE_PASSWORD: ${{ secrets.SPOOF_KEYSTORE_PASSWORD }}
+          SPOOF_KEY_ALIAS: ${{ secrets.SPOOF_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          INFO="$(python3 "$GITHUB_WORKSPACE/.github/xiaomi_17/spoof/cert_info.py")"
+          if [ -z "$INFO" ]; then
+            echo "::notice::SPOOF_KEYSTORE not set - kernel trusts the stock BakaSU manager only"
+            exit 0
+          fi
+          read -r SIZE SHA _ <<< "$INFO"
+          python3 "$GITHUB_WORKSPACE/.github/xiaomi_17/spoof/bakasu_extra_key.py" \
+            "$(find . -name apk_sign.c -print -quit)" "$SIZE" "$SHA"
 
       - name: Enable KernelSU toolkit support for BakaSU
         # BakaSU's ksu_toolkit interface (backslashxx/ksu_toolkit), off upstream.
@@ -328,8 +354,8 @@ jobs:
         # kernel/supercall/supercall.c:114-118: CHANGE_MANAGER_UID,
         # CHANGE_KSUVER, CHANGE_SPOOF_UNAME, CHANGE_KSUFLAGS. It does not add a
         # trusted signature - the toolkit slot is registered at runtime by a
-        # root process (ksu_register_manager, index 253) - so the single-manager
-        # guarantee from the step above is unaffected.
+        # root process (ksu_register_manager, index 253) - so the trusted keys
+        # stay BakaSU's plus, optionally, our spoofed-manager key.
         if: inputs.root_flavor == 'bakasu'
         uses: ./.github/actions/set-kernel-config
         with:

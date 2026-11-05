@@ -1,0 +1,201 @@
+name: Build spoofed BakaSU manager (xiaomi_17)
+
+# BakaSU dropped its spoofed manager in 01c11c70, so for commits after that we
+# build one from the same source commit the kernel uses (older commits keep
+# BakaSU's own and this job steps aside). It differs from the stock manager only in the
+# package name and the signing key: the package is derived from our key (stable,
+# so installs update in place) and the kernel trusts that key through
+# bakasu_extra_key.py in xiaomi_17_build.yml.
+#
+# Needs the SPOOF_KEYSTORE, SPOOF_KEYSTORE_PASSWORD and SPOOF_KEY_ALIAS secrets
+# (SPOOF_KEY_PASSWORD optional, defaults to the keystore password); see
+# .github/xiaomi_17/spoof/cert_info.py for creating the key. Without them the
+# job logs a notice and publishes nothing.
+#
+# Kept as its own file, not a clone, so syncing with upstream never touches it.
+
+on:
+  workflow_call:
+    inputs:
+      manager_list:
+        description: "resolve-sources manager_list JSON"
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: Spoofed manager
+    runs-on: ubuntu-latest
+    # A manager build problem must not block the kernel release; the job still
+    # shows its failure, and an unverified APK is never uploaded.
+    continue-on-error: true
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SPOOF_KEYSTORE: ${{ secrets.SPOOF_KEYSTORE }}
+      SPOOF_KEYSTORE_PASSWORD: ${{ secrets.SPOOF_KEYSTORE_PASSWORD }}
+      SPOOF_KEY_ALIAS: ${{ secrets.SPOOF_KEY_ALIAS }}
+      SPOOF_KEY_PASSWORD: ${{ secrets.SPOOF_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:  # xiaomi_17-hardened-added
+          persist-credentials: false  # xiaomi_17-hardened
+
+      - name: Select the BakaSU record and signing key
+        id: sel
+        shell: bash
+        env:
+          MANAGER_LIST: ${{ inputs.manager_list }}
+        run: |
+          set -euo pipefail
+          MANAGER_LIST=${MANAGER_LIST#\[,/[}
+          REC="$(echo "$MANAGER_LIST" | jq -c '[.[] | select(.flavor == "bakasu" and .source == "run" and .run_id != null)][0] // empty' 2>/dev/null || true)"
+          if [ -z "$REC" ]; then
+            echo "::notice::No BakaSU manager build in this run - nothing to spoof"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Older pins (e.g. d5e9e025) still have BakaSU's own spoofed build, and
+          # list-manager-apks already publishes it under the same file name, so
+          # building ours too would collide. Ours fills the gap only.
+          RUN_ID="$(echo "$REC" | jq -r .run_id)"
+          if gh api "repos/Baka-SU/BakaSU/actions/runs/${RUN_ID}/artifacts?per_page=100" --jq '.artifacts[].name' | grep -qx 'Spoofed-Manager-release'; then
+            echo "::notice::BakaSU published its own spoofed manager for this commit - using that one"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          INFO="$(python3 .github/xiaomi_17/spoof/cert_info.py)"
+          if [ -z "$INFO" ]; then
+            echo "::notice::SPOOF_KEYSTORE not set - skipping the spoofed manager (stock manager is still published)"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          read -r SIZE SHA PKG <<< "$INFO"
+          {
+            echo "build=true"
+            echo "commit=$(echo "$REC" | jq -r .stock)"
+            echo "run_id=$(echo "$REC" | jq -r .run_id)"
+            echo "cert_size=$SIZE"
+            echo "cert_sha=$SHA"
+            echo "package=$PKG"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check out BakaSU at the kernel commit
+        if: steps.sel.outputs.build == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false  # xiaomi_17-hardened
+          repository: Baka-SU/BakaSU
+          ref: ${{ steps.sel.outputs.commit }}
+          path: BakaSU
+          # versionCode and the version name come from git history
+          fetch-depth: 0
+
+      - name: Write the signing key
+        if: steps.sel.outputs.build == 'true'
+        shell: bash
+        working-directory: BakaSU
+        run: |
+          set -euo pipefail
+          echo "$SPOOF_KEYSTORE" | base64 -d > spoof.jks
+          cp spoof.jks manager/spoof.jks
+          {
+            echo "KEYSTORE_FILE=spoof.jks"
+            echo "KEYSTORE_PASSWORD=${SPOOF_KEYSTORE_PASSWORD}"
+            echo "KEY_ALIAS=${SPOOF_KEY_ALIAS}"
+            echo "KEY_PASSWORD=${SPOOF_KEY_PASSWORD:-$SPOOF_KEYSTORE_PASSWORD}"
+          } >> manager/gradle.properties
+
+      - name: Set up Java
+        if: steps.sel.outputs.build == 'true'
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Gradle
+        if: steps.sel.outputs.build == 'true'
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
+
+      - name: Build the APK
+        if: steps.sel.outputs.build == 'true'
+        shell: bash
+        working-directory: BakaSU/manager
+        env:
+          COMMIT: ${{ steps.sel.outputs.commit }}
+          PACKAGE: ${{ steps.sel.outputs.package }}
+        run: |
+          ./gradlew assembleRelease -Pcommit="$COMMIT" \
+            -PKSU_PACKAGE_NAME="$PACKAGE" -PIS_SPOOFED_BUILD=true
+
+      - name: Fetch ksud from the BakaSU build
+        # The APK embeds ksud; BakaSU builds it per target in the same run
+        # that produced the stock manager, so reuse those binaries.
+        if: steps.sel.outputs.build == 'true'
+        shell: bash
+        env:
+          RUN_ID: ${{ steps.sel.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          for t in aarch64-linux-android x86_64-linux-android armv7-linux-androideabi riscv64-linux-android; do
+            gh run download "$RUN_ID" --repo Baka-SU/BakaSU --name "ksud-$t" --dir "ksud-$t"
+            bin="$(find "ksud-$t" -type f -name ksud | head -n 1)"
+            test -n "$bin"
+            install -D "$bin" "BakaSU/target/$t/release/ksud"
+          done
+
+      - name: Repack with ksud and sign
+        if: steps.sel.outputs.build == 'true'
+        shell: bash
+        working-directory: BakaSU
+        run: |
+          python3 repack_apk_multi.py repack \
+            -b release -t release \
+            -a arm64-v8a -a armeabi-v7a -a x86_64 -a riscv64 \
+            -K spoof.jks -A "$SPOOF_KEY_ALIAS" \
+            -P "$SPOOF_KEYSTORE_PASSWORD" -S "${SPOOF_KEY_PASSWORD:-$SPOOF_KEYSTORE_PASSWORD}" \
+            --strip
+
+      - name: Verify package and signature
+        # The kernel trusts this APK only if its certificate is the one it was
+        # built with, so check that here instead of finding out on the device.
+        if: steps.sel.outputs.build == 'true'
+        id: pick
+        shell: bash
+        env:
+          PACKAGE: ${{ steps.sel.outputs.package }}
+          CERT_SHA: ${{ steps.sel.outputs.cert_sha }}
+        run: |
+          set -euo pipefail
+          APK="$(ls BakaSU/dist/*universal*.apk | head -n 1)"
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)"
+          GOT_PKG="$("$BT/aapt2" dump packagename "$APK")"
+          GOT_SHA="$("$BT/apksigner" verify --print-certs "$APK" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1)"
+          echo "package: $GOT_PKG  cert: $GOT_SHA"
+          [ "$GOT_PKG" = "$PACKAGE" ] || { echo "::error::package $GOT_PKG != $PACKAGE"; exit 1; }
+          [ "$GOT_SHA" = "$CERT_SHA" ] || { echo "::error::certificate $GOT_SHA != the key the kernel trusts"; exit 1; }
+          NAME="$(basename "$APK")"
+          case "$NAME" in
+            *poofed*) ;;
+            *) NAME="${NAME%.apk}-spoofed.apk" ;;
+          esac
+          mkdir -p out
+          cp "$APK" "out/$NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Spoofed BakaSU manager"
+            echo "- APK: \`$NAME\`"
+            echo "- Package: \`$PACKAGE\`"
+            echo "- Built from BakaSU \`${{ steps.sel.outputs.commit }}\`"
+            echo "- Signing certificate: size \`${{ steps.sel.outputs.cert_size }}\`, sha256 \`$CERT_SHA\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the spoofed manager
+        if: steps.sel.outputs.build == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: ${{ steps.pick.outputs.name }}
+          path: out/${{ steps.pick.outputs.name }}
+          if-no-files-found: error
+          archive: false

@@ -64,11 +64,6 @@ runs:
               fi
               echo "$ART_IDS" | while read -r AID ART_NAME; do
                 [ -n "$AID" ] || continue
-                # spoofed manager only
-                case "$ART_NAME" in
-                  *poofed*) ;;
-                  *) echo "Skipping non-spoofed artifact ${ART_NAME}" >&2; continue ;;
-                esac
                 curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors \
                   -H "Authorization: Bearer ${GH_TOKEN}" \
                   -o "_${AID}.zip" \
@@ -104,11 +99,10 @@ runs:
             fi
           )
         done
-        # Filter BakaSU to release arm64/universal APKs only (drop debug,
-        # 32-bit, riscv64). Upstream re-packaged 2026-10-14: artifacts now
-        # carry per-ABI APKs (arm64-v8a/armeabi-v7a/riscv64) instead of a
-        # single universal APK - keep arm64-v8a (all our devices) plus the
-        # legacy universal name.
+        # Filter BakaSU to the universal release APK (drop debug and the
+        # per-ABI APKs). Upstream re-packaged 2026-10-14: artifacts now carry
+        # arm64-v8a/armeabi-v7a/x86_64/riscv64 APKs next to the universal
+        # one, and the universal APK covers all our devices.
         if grep -q "Baka-SU|BakaSU|" "$MANIFEST" 2>/dev/null; then
           tmp_manifest="${MANIFEST}.filtered"
           : > "$tmp_manifest"
@@ -116,10 +110,11 @@ runs:
             [ -n "$n" ] || continue
             if [ "$o" = "Baka-SU" ] && [ "$r" = "BakaSU" ]; then
               ln=$(echo "$n" | tr '[:upper:]' '[:lower:]')
-              # universal only
+              # universal only: one APK per release is enough for our devices
               if [[ "$ln" != *universal* ]]; then echo "Dropping BakaSU non-universal $n" >&2; rm -f "$OUT_APKS/$n"; continue; fi
               if [[ "$ln" == *debug* ]]; then echo "Dropping BakaSU debug $n" >&2; rm -f "$OUT_APKS/$n"; continue; fi
-              # now only arm64/universal release + spoofed remain
+              # the stock universal release remains; where upstream no longer
+              # builds a spoofed one, xiaomi_17_spoofed_manager.yml does
             fi
             echo "$o|$r|$n" >> "$tmp_manifest"
           done < "$MANIFEST"
@@ -135,4 +130,3 @@ runs:
         echo "apk_list=${APK_JSON}" >> "$GITHUB_OUTPUT"
         echo "Found $(wc -l < "$MANIFEST") manager APKs"
         find "$OUT_APKS" -maxdepth 1 -type f -printf "%f\n"
-
